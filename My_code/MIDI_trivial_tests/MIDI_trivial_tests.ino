@@ -101,13 +101,24 @@ void setup() {
   Serial.begin(115200);
 }
 
+int num=20;
 void loop() {
   // play a specific note
   //noteOn(NOTE_C4, 0x3F, 500);  // play Middle C at half velocity for 500ms
   //noNote(500); // play no note, aka rest, for 500ms
   
-  // play a random note
-   noteOn(random(21, 108), 0x3F, random(2, 6) * 100);  // play random note C at half velocity for 200-500ms
+  // play a random not
+  noteOn(num, 100);
+  //delay(5000);
+  num++;
+  delay(1000);
+  if(num>31){
+    //delay(200000);
+    num=20;
+  }
+
+  
+  //  delay(1000);  // play random note C at half velocity for 200-500ms
 }
 
 
