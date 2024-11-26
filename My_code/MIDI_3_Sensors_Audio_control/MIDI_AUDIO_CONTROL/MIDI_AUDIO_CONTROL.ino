@@ -213,7 +213,7 @@ int get_next_scale_note_control(int intial_note, bool status){
       return temp_note;
     }
   }else{
-    if(initial_note==0){
+    if(intial_note==0){
       return NOTE_A0;
     }else{
       return intial_note;
