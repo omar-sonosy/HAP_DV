@@ -90,55 +90,34 @@
 
 
 
-#define SIXTEENTH QUARTER/4
-#define EIGHTH QUARTER/2
-#define QUARTER 526
-#define DOT_QUARTER QUARTER * 1.5
-#define HALF QUARTER*2
-#define WHOLE QUARTER*4
+#define CYCLE_NUM_PEAK 5
 
 //----------------------------------------------------------------------------------------------------------//
 // Rentrer les variables :
-const int numSensorsToDisplay=1;
+const int numSensorsToDisplay=3;
 const int analogPins[] = {A0, A1, A2, A3, A4, A5}; // Broche de A0 à A5
 const unsigned sampleInterval = 1; // période d'échantillonnage (en ms)
 const unsigned bit = 1023; // Résolution ADC (2^bit-1)
 const unsigned tensionMaxADC = 5000; // Tension max de l'ADC (mv)
-bool last_state=true;
-bool current_state=true;
-int Noise_threshold= map(5, 0, bit, 0, tensionMaxADC);
 int middle_level_voltage= map(100,0,bit,0,tensionMaxADC);
-int note=60;
 
 //----------------------------------------------------------------------------------------------------------//
 
 unsigned long lastSampleTime = 0; // Temps du dernier échantillon
-unsigned long start_measurment_time=0;
-unsigned long lastMeasurementTime=0;
+unsigned long start_measurment_time[numSensorsToDisplay]={0};
+unsigned long lastMeasurementTime[numSensorsToDisplay]={0};
 int lastVoltage[numSensorsToDisplay] = {0}; // Dernière valeur de tension mesurée
 int frequency[numSensorsToDisplay] = {0}; // Fréquence calculée
 int numPeak[numSensorsToDisplay] = {0}; // Nombre de peak  // Temps du dernier peak
-int active = 0; // Condition scénario
+bool sensor_active[numSensorsToDisplay]={false};
+int sensor_notes[numSensorsToDisplay]={60};
 int note_increase_index=0;
+int sensor_note;
 
-int get_next_scale_note(int intial_note){
-  int temp_note;
-  int note_increase[7]={0,2,2,1,2,2,1};
 
-  if (active==1){
-    temp_note=intial_note+note_increase[note_increase_index];
-    if (note_increase_index<6){
-      note_increase_index++;
-      return temp_note;
-    }
-    else{
-      note_increase_index=0;
-      return 60;
-    }
-  }else{
-    return intial_note;
-  }
-}
+// array for the connection of each sensor to every channel:
+
+
 void setup() {
   // setup serial port at 115200 to communicate via MIDI
   Serial.begin(115200);
@@ -153,69 +132,25 @@ void loop() {
     lastSampleTime = currentTime;
   }
 
-  if((currentTime-lastMeasurementTime)>1000){
-    if(active==1){
-      noteOff(note);
-      active=0;
+  for(int i=0; i<numSensorsToDisplay;i++){
+
+    if(currentTime-lastMeasurementTime[i]>1000){
+      if(true==sensor_active[i]){
+        sensor_off(i);
+        sensor_active[i]=false;
+      }
+      lastMeasurementTime[i]=currentTime;
+      resetMeasurements(i);
     }
-    // int readValue = analogRead(analogPins[0]); // Lecture de la valeur analogique
-    // int currentVoltage = map(readValue, 0, bit, 0, tensionMaxADC);
-    // Serial.println(currentVoltage);
-    // Serial.println(lastVoltage[0]);
-     resetMeasurements(); // Réinitialisation des variables
-     lastMeasurementTime = currentTime;
-  }
-
-  if (numPeak[0]>=10) {
-
-    for(int i = 0; i < numSensorsToDisplay; i++){
-      frequency[i] = numPeak[i] * (10000/(currentTime-start_measurment_time));  // La fréquence est le nombre de peak détectés en 1 seconde
+    if(numPeak[i]>=CYCLE_NUM_PEAK){
+      sensor_on(i);
+      sensor_active[i]=true;
+      lastMeasurementTime[i]=currentTime;
+      resetMeasurements(i);
     }
-    // Serial.println(numPeak[0]);
-    // Serial.println(frequency[0]);
-    // Serial.write("\n\r");
-    noteOff(note);
-    // if(active==1){
-    //   note++;
-    // }
-    note=get_next_scale_note(note);
-    noteOn(note, 0x3F);
-    active=1;
-    // Sénario de test 1
 
-    // if( frequency[0]< 250 ){
-    //   if(active !=0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_A2, 0x3F);
-    //   active = 1;
-    // }
-    // if(frequency[0] >= 250 && frequency[0]< 400){
-    //   if(active != 0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_G3, 0x3F);
-    //   active = 1; 
-    // }
-    // if(frequency[0] >= 400 && frequency[0]< 650){
-    //   if(active != 0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_F4, 0x3F);
-    //   active = 1;
-    // }
-    // if(frequency[0] >= 650 ){
-    //   if(active != 0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_D5, 0x3F);
-    //   active = 1;
-    // }
-
-    resetMeasurements(); // Réinitialisation des variables
-    lastMeasurementTime = currentTime;
   }
-  }
+}
 
 
 bool detect_peak(int sensorIndex, int currentVoltage){
@@ -232,9 +167,8 @@ void readSensors(){
     int currentVoltage = map(readValue, 0, bit, 0, tensionMaxADC); // Conversion de la valeur lue en tension (mV)
 
     if(detect_peak(i,currentVoltage)){
-      //Serial.write("peak detected\n\r");
       if(numPeak[i]==0){
-        start_measurment_time=millis();
+        start_measurment_time[i]=millis();
       }
       numPeak[i]++;
     }
@@ -245,11 +179,103 @@ void readSensors(){
 
 
 //----------------------------------------------------------------------------------------------------------//
+//Algorithms functions
 
-void resetMeasurements(){
-  for(int i = 0; i < numSensorsToDisplay; i++){
-    numPeak[i] = 0; // Réinitialise le nombre de peak pour la prochaine période
+
+
+
+int get_next_scale_note_musical(int intial_note, bool status){
+  int temp_note;
+  int note_increase[7]={0,2,2,1,2,2,1};
+
+  if (status==true){
+    temp_note=intial_note+note_increase[note_increase_index];
+    if (note_increase_index<6){
+      note_increase_index++;
+      return temp_note;
+    }
+    else{
+      note_increase_index=0;
+      return 60;
+    }
+  }else{
+    return intial_note;
   }
+}
+
+
+int get_next_scale_note_control(int intial_note, bool status){
+  int temp_note;
+  int note_increase[7]={0,2,2,1,2,2,1};
+
+  if (status==true){
+    temp_note=intial_note+note_increase[note_increase_index];
+    if (note_increase_index<6){
+      note_increase_index++;
+      return temp_note;
+    }
+    else{
+      note_increase_index=0;
+      return 60;
+    }
+  }else{
+    return intial_note;
+  }
+}
+
+int get_previous_scale_note_control(int intial_note, bool status){
+  int temp_note;
+  int note_increase[7]={0,2,2,1,2,2,1};
+
+  if (status==true){
+    temp_note=intial_note-note_increase[note_increase_index];
+    if (note_increase_index>0){
+      note_increase_index--;
+      return temp_note;
+    }
+    else{
+      note_increase_index=6;
+      return 70;
+    }
+  }else{
+    return intial_note;
+  }
+}
+
+void sensor_on(int sensor_index){
+  switch(sensor_index){
+    case 0:
+      noteOff(sensor_notes[sensor_index],sensor_index);
+      //sensor_notes[sensor_index]=get_next_scale_note_control(sensor_notes[sensor_index],sensor_active[sensor_index]);
+      noteOn(sensor_notes[sensor_index], sensor_index);
+      break;
+    case 1:
+      //noteOff(sensor_notes[sensor_index],sensor_index);
+      //sensor_notes[sensor_index]=NOTE_G2;
+      //noteOn(sensor_notes[sensor_index], sensor_index);
+      sensor_off(sensor_index);
+      sensor_notes[0]=get_next_scale_note_control(sensor_notes[0],sensor_active[sensor_index]);
+      break;
+    case 2:
+      // noteOff(sensor_notes[sensor_index],sensor_index);
+      // sensor_notes[sensor_index]=NOTE_G2;
+      // noteOn(sensor_notes[sensor_index], sensor_index);
+      sensor_off(sensor_index);
+      sensor_notes[0]=get_previous_scale_note_control(sensor_notes[0],sensor_active[sensor_index]);
+      break;
+    default:
+      noteOff(sensor_notes[sensor_index],sensor_index);
+  }
+}
+
+
+void sensor_off(int sensor_index){
+  noteOff(sensor_notes[0],0);
+}
+
+
+void resetMeasurements(int index){
+  numPeak[index] = 0; // Réinitialise le nombre de peak pour la prochaine période
 }
 /*
 MIDI Data message
@@ -274,29 +300,21 @@ void noteOn(int note, int velocity, int duration) {
 }
 
 // turns note on at a specific velocity indefinitely
-void noteOn(int note, int velocity) {
-  Serial.write(144);
+void noteOn(int note, int channel) {
+  Serial.write(144+channel);
   Serial.write(note);
-  Serial.write(velocity);
+  Serial.write(0x3F);
 }
 
 // turns off a previously playing note
-void noteOff(int note) {
-  Serial.write(144);
+void noteOff(int note, int channel) {
+  Serial.write(144+channel);
   Serial.write(note);
   Serial.write(0);
 }
 
 
-void sensor_off(int sensor_index){
-  if(sensor_index==0){
-    noteOff(NOTE_A2);
-    noteOff(NOTE_G3);
-    noteOff(NOTE_F4);
-    noteOff(NOTE_D5);
-  }
-  
-}
+
 // plays no note for specified duration
 void noNote(int duration) {
   Serial.write(144);
