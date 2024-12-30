@@ -93,27 +93,23 @@
 #define CYCLE_NUM_PEAK 5
 
 //----------------------------------------------------------------------------------------------------------//
-// Rentrer les variables :
+// Used Global Variables:
 const int numSensorsToDisplay=3;
-const int analogPins[] = {A0, A1, A2, A3, A4, A5}; // Broche de A0 à A5
-const unsigned sampleInterval = 1; // période d'échantillonnage (en ms)
-const unsigned bit = 1023; // Résolution ADC (2^bit-1)
-const unsigned tensionMaxADC = 5000; // Tension max de l'ADC (mv)
-int middle_level_voltage= map(100,0,bit,0,tensionMaxADC);
+const int analogPins[] = {A0, A1, A2, A3, A4, A5}; // Analog pins
+const unsigned sampleInterval = 1; // sampling interval (in ms)
+const unsigned bit = 1023; // ADC Resolution
+const unsigned tensionMaxADC = 5000; // Maximum value of ADC (mv)
+int middle_level_voltage= map(100,0,bit,0,tensionMaxADC); //Voltage value to detect a peak
+unsigned long lastSampleTime = 0; // Time of last sample
+unsigned long start_measurment_time[numSensorsToDisplay]={0};//Time of first peak detected for each sensor
+unsigned long lastMeasurementTime[numSensorsToDisplay]={0};//Time of last measurment taken for each sensor
+int lastVoltage[numSensorsToDisplay] = {0}; // Last voltage measured for each sensor
+int numPeak[numSensorsToDisplay] = {0}; // Number of peaks detected for each sensor
+bool sensor_active[numSensorsToDisplay]={false};// Array to detect if the sensor is active or not
+int sensor_notes[numSensorsToDisplay]={0};//Array to save the playing note for each sesnor
+int note_increase_index=0;// index to find the next note in the increasing array
 
-//----------------------------------------------------------------------------------------------------------//
 
-unsigned long lastSampleTime = 0; // Temps du dernier échantillon
-unsigned long start_measurment_time[numSensorsToDisplay]={0};
-unsigned long lastMeasurementTime[numSensorsToDisplay]={0};
-int lastVoltage[numSensorsToDisplay] = {0}; // Dernière valeur de tension mesurée
-int frequency[numSensorsToDisplay] = {0}; // Fréquence calculée
-int numPeak[numSensorsToDisplay] = {0}; // Nombre de peak  // Temps du dernier peak
-bool sensor_active[numSensorsToDisplay]={false};
-int sensor_notes[numSensorsToDisplay]={0};
-int note_increase_index=0;
-
-// array for the connection of each sensor to every channel:
 
 
 void setup() {
@@ -126,12 +122,12 @@ void loop() {
   unsigned long currentTime = millis();
 
   if (currentTime - lastSampleTime >= sampleInterval){
-    readSensors(); // Lecture et filtrage de la valeur analogique des capteurs
+    readSensors(); // Reading the sensor value and detecting if there's a peak or not
     lastSampleTime = currentTime;
   }
 
   for(int i=0; i<numSensorsToDisplay;i++){
-
+// if a sensor stays idle for 1 seconds it cuts off the playing note
     if(currentTime-lastMeasurementTime[i]>1000){
       if(true==sensor_active[i]){
         sensor_off(i);
@@ -140,6 +136,7 @@ void loop() {
       lastMeasurementTime[i]=currentTime;
       resetMeasurements(i);
     }
+    //if a sensor reading is more than specific value or more it activates the sensor
     if(numPeak[i]>=CYCLE_NUM_PEAK){
       sensor_on(i);
       sensor_active[i]=true;
@@ -150,7 +147,7 @@ void loop() {
   }
 }
 
-
+//helping function to detect if there's a peak
 bool detect_peak(int sensorIndex, int currentVoltage){
   if((currentVoltage - lastVoltage[sensorIndex])>middle_level_voltage ){
     return true;
@@ -158,7 +155,7 @@ bool detect_peak(int sensorIndex, int currentVoltage){
     return false;
   }
 }
-
+//function to read all sensors and detect if there's a peak
 void readSensors(){
   for(int i = 0; i < numSensorsToDisplay; i++){
     int readValue = analogRead(analogPins[i]); // Lecture de la valeur analogique
@@ -181,7 +178,7 @@ void readSensors(){
 
 
 
-
+//function to scale up the note in a musical way
 int get_next_scale_note_musical(int intial_note, bool status){
   int temp_note;
   int note_increase[7]={0,2,2,1,2,2,1};
@@ -200,7 +197,7 @@ int get_next_scale_note_musical(int intial_note, bool status){
     return intial_note;
   }
 }
-
+//function to scale up the note to control the volume of a song
 int get_next_scale_note_control(int intial_note, bool status){
   int temp_note;
   int note_increase=12;
@@ -220,7 +217,7 @@ int get_next_scale_note_control(int intial_note, bool status){
     }
   }
 }
-
+//Function to activate each sensor in a different behavior
 void sensor_on(int sensor_index){
   switch(sensor_index){
     case 0:
@@ -243,14 +240,14 @@ void sensor_on(int sensor_index){
   }
 }
 
-
+//Function to cut off each sensor
 void sensor_off(int sensor_index){
   noteOff(sensor_notes[sensor_index],sensor_index);
 }
 
 
 void resetMeasurements(int index){
-  numPeak[index] = 0; // Réinitialise le nombre de peak pour la prochaine période
+  numPeak[index] = 0; // Reinitialize the number of peak detected for all sensors
 }
 /*
 MIDI Data message

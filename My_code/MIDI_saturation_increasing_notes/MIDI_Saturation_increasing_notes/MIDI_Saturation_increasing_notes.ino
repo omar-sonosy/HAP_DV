@@ -90,37 +90,63 @@
 
 
 
-#define SIXTEENTH QUARTER/4
-#define EIGHTH QUARTER/2
-#define QUARTER 526
-#define DOT_QUARTER QUARTER * 1.5
-#define HALF QUARTER*2
-#define WHOLE QUARTER*4
-
 //----------------------------------------------------------------------------------------------------------//
-// Rentrer les variables :
+// Used Global Variables:
 const int numSensorsToDisplay=1;
-const int analogPins[] = {A0, A1, A2, A3, A4, A5}; // Broche de A0 à A5
-const unsigned sampleInterval = 1; // période d'échantillonnage (en ms)
-const unsigned bit = 1023; // Résolution ADC (2^bit-1)
-const unsigned tensionMaxADC = 5000; // Tension max de l'ADC (mv)
-bool last_state=true;
-bool current_state=true;
-int Noise_threshold= map(5, 0, bit, 0, tensionMaxADC);
-int middle_level_voltage= map(100,0,bit,0,tensionMaxADC);
-int note=60;
+const int analogPins[] = {A0, A1, A2, A3, A4, A5}; // Analog pins
+const unsigned sampleInterval = 1; // sampling interval (in ms)
+const unsigned bit = 1023; // ADC Resolution
+const unsigned tensionMaxADC = 5000; // Maximum value of ADC (mv)
+int middle_level_voltage= map(100,0,bit,0,tensionMaxADC); //Voltage value to detect a peak
+int note=60;//initial note value
+unsigned long lastSampleTime = 0; // Time of last sample
+unsigned long start_measurment_time=0;//Time of first peak detected
+unsigned long lastMeasurementTime=0;//Time of last measurment taken
+int lastVoltage[numSensorsToDisplay] = {0}; // Last voltage measured for each sensor
+int numPeak[numSensorsToDisplay] = {0}; // Number of peaks detected
+int active = 0; // Variable to detect if the sensor is active or not
+int note_increase_index=0;// index to find the next note in the increasing array
 
-//----------------------------------------------------------------------------------------------------------//
 
-unsigned long lastSampleTime = 0; // Temps du dernier échantillon
-unsigned long start_measurment_time=0;
-unsigned long lastMeasurementTime=0;
-int lastVoltage[numSensorsToDisplay] = {0}; // Dernière valeur de tension mesurée
-int frequency[numSensorsToDisplay] = {0}; // Fréquence calculée
-int numPeak[numSensorsToDisplay] = {0}; // Nombre de peak  // Temps du dernier peak
-int active = 0; // Condition scénario
-int note_increase_index=0;
+void setup() {
+  // setup serial port at 115200 to communicate via MIDI
+  Serial.begin(115200);
+}
 
+
+void loop() {
+  unsigned long currentTime = millis();
+
+  if (currentTime - lastSampleTime >= sampleInterval){
+    readSensors(); // Reading the sensor value and detecting if there's a peak or not
+    lastSampleTime = currentTime;
+  }
+// if a sensor stays idle for 1 seconds it cuts off the playing note
+  if((currentTime-lastMeasurementTime)>1000){
+    if(active==1){
+      noteOff(note);
+      active=0;
+    }
+     resetMeasurements(); // Reinitiaizing the variables
+     lastMeasurementTime = currentTime;
+  }
+//if a sensor reading 10 peaks or more it scales up the note
+  if (numPeak[0]>=10) {
+
+    
+    noteOff(note);
+    note=get_next_scale_note(note);
+    noteOn(note, 0x3F);
+    active=1;
+
+    resetMeasurements(); // Reinitiaizing the variables
+    lastMeasurementTime = currentTime;
+  }
+}
+
+
+
+//function to scale up the note
 int get_next_scale_note(int intial_note){
   int temp_note;
   int note_increase[7]={0,2,2,1,2,2,1};
@@ -139,85 +165,8 @@ int get_next_scale_note(int intial_note){
     return intial_note;
   }
 }
-void setup() {
-  // setup serial port at 115200 to communicate via MIDI
-  Serial.begin(115200);
-}
 
-
-void loop() {
-  unsigned long currentTime = millis();
-
-  if (currentTime - lastSampleTime >= sampleInterval){
-    readSensors(); // Lecture et filtrage de la valeur analogique des capteurs
-    lastSampleTime = currentTime;
-  }
-
-  if((currentTime-lastMeasurementTime)>1000){
-    if(active==1){
-      noteOff(note);
-      active=0;
-    }
-    // int readValue = analogRead(analogPins[0]); // Lecture de la valeur analogique
-    // int currentVoltage = map(readValue, 0, bit, 0, tensionMaxADC);
-    // Serial.println(currentVoltage);
-    // Serial.println(lastVoltage[0]);
-     resetMeasurements(); // Réinitialisation des variables
-     lastMeasurementTime = currentTime;
-  }
-
-  if (numPeak[0]>=10) {
-
-    for(int i = 0; i < numSensorsToDisplay; i++){
-      frequency[i] = numPeak[i] * (10000/(currentTime-start_measurment_time));  // La fréquence est le nombre de peak détectés en 1 seconde
-    }
-    // Serial.println(numPeak[0]);
-    // Serial.println(frequency[0]);
-    // Serial.write("\n\r");
-    noteOff(note);
-    // if(active==1){
-    //   note++;
-    // }
-    note=get_next_scale_note(note);
-    noteOn(note, 0x3F);
-    active=1;
-    // Sénario de test 1
-
-    // if( frequency[0]< 250 ){
-    //   if(active !=0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_A2, 0x3F);
-    //   active = 1;
-    // }
-    // if(frequency[0] >= 250 && frequency[0]< 400){
-    //   if(active != 0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_G3, 0x3F);
-    //   active = 1; 
-    // }
-    // if(frequency[0] >= 400 && frequency[0]< 650){
-    //   if(active != 0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_F4, 0x3F);
-    //   active = 1;
-    // }
-    // if(frequency[0] >= 650 ){
-    //   if(active != 0){
-    //     sensor_off(0);
-    //   }
-    //   noteOn(NOTE_D5, 0x3F);
-    //   active = 1;
-    // }
-
-    resetMeasurements(); // Réinitialisation des variables
-    lastMeasurementTime = currentTime;
-  }
-  }
-
-
+//helping function to detect if there's a peak
 bool detect_peak(int sensorIndex, int currentVoltage){
   if((currentVoltage - lastVoltage[sensorIndex])>middle_level_voltage ){
     return true;
@@ -225,14 +174,14 @@ bool detect_peak(int sensorIndex, int currentVoltage){
     return false;
   }
 }
-
+//function to read all sensors and detect if there's a peak
 void readSensors(){
   for(int i = 0; i < numSensorsToDisplay; i++){
-    int readValue = analogRead(analogPins[i]); // Lecture de la valeur analogique
-    int currentVoltage = map(readValue, 0, bit, 0, tensionMaxADC); // Conversion de la valeur lue en tension (mV)
+    int readValue = analogRead(analogPins[i]); // Reading the analog value
+    int currentVoltage = map(readValue, 0, bit, 0, tensionMaxADC); // Converging the read value into voltage in(mV)
 
     if(detect_peak(i,currentVoltage)){
-      //Serial.write("peak detected\n\r");
+
       if(numPeak[i]==0){
         start_measurment_time=millis();
       }
@@ -248,9 +197,10 @@ void readSensors(){
 
 void resetMeasurements(){
   for(int i = 0; i < numSensorsToDisplay; i++){
-    numPeak[i] = 0; // Réinitialise le nombre de peak pour la prochaine période
+    numPeak[i] = 0; // Reinitialize the number of peak detected for all sensors
   }
 }
+
 /*
 MIDI Data message
 Command: 0x90 (Note On command code)
